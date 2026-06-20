@@ -1,0 +1,121 @@
+Install and configure Amanda Server
+
+sudo apt install amanda-server amanda-client -y
+sudo mkdir /amanda
+sudo chown backup:backup /amanda
+sudo chsh -s /bin/bash backup
+sudo passwd backup
+su - backup
+mkdir -p /amanda/vtapes/slot{1,2,3,4}
+mkdir -p /amanda/holding
+mkdir -p /amanda/state/{curinfo,log,index}
+mkdir -p /etc/amanda/userConfig
+-------------------------------------
+nano /etc/amanda/userConfig/amanda.conf
+
+add following to the file.
+"HPCSA-daily"
+infofile "/amanda/state/curinfo"
+logdir "/amanda/state/log"
+indexdir "/amanda/state/index"
+dumpuser "backup"
+
+tpchanger "chg-disk:/amanda/vtapes"
+labelstr "MyData[0-9][0-9]"
+autolabel "MyData%%" EMPTY VOLUME_ERROR
+tapecycle 4
+dumpcycle 3 days
+amrecover_changer "changer"
+tapetype "TEST-TAPE"
+define tapetype TEST-TAPE {
+length 100 mbytes
+filemark 4 kbytes
+}
+
+define dumptype simple-gnutar-local {
+auth "local"
+compress none
+program "GNUTAR"
+}
+# Dumptype used by the disklist
+define dumptype global {
+    auth "bsdtcp"
+}
+
+define dumptype root-tar {
+    global
+    program "GNUTAR"
+    compress none
+    index yes
+    priority low
+}
+
+define dumptype user-tar {
+    root-tar
+    priority medium
+}
+
+efine dumptype comp-user-tar {
+    user-tar
+    compress client fast
+}
+
+holdingdisk hd1 {
+directory "/amanda/holding"
+use 50 mbytes
+chunksize 1 mbyte
+}
+
+save the file.
+---------------------------------------------
+nano /etc/amanda/userConfig/disklist
+type following .... (Includes sample configuration)
+                                                            
+localhost /etc simple-gnutar-local
+#localhost /home comp-user-tar
+192.168.80.185 /etc comp-user-tar
+#client2.example.com  /home  comp-user-tar
+
+Save the file.
+----------------------------------------------
+amcheck userConfig
+amdump userConfig
+echo $?
+amreport userConfig
+
+Amanda Client Installation and Configuration
+sudo apt update -y
+sudo apt install amanda-client -y
+sudo chsh -s /bin/bash backup
+sudo passwd backup
+sudo nano  /var/backups/.amandahosts
+type following in the file.
+
+192.168.80.165 backup amdump
+
+save the file.
+
+*the above IP address is the IP address of the amanda server.
+*The backup is the name of the user that is used by the amanda client. The username may be amandabackup.
+
+Now go to the server and check.
+
+Take backup of a specific client disk 
+amdump userConfig 192.168.80.185 /data
+
+Find backup information about the client 
+amadmin userConfig find 192.168.80.185
+
+To restore
+sudo nano /var/backups/.amandahosts
+add
+localhost root amindexd amidxtaped
+save the file.
+Create a new blank directory
+amrecover userConfig
+amrecover> listhost
+amrecover> sethost 192.168.80.185
+amrecover> listdisk
+amrecover> setdisk /data
+amrecover> ls
+amrecover> extract
